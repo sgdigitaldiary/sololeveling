@@ -1031,9 +1031,13 @@
 
     <div class="grid-3 section-gap">
       <div class="panel-card">
-        <div class="card-title">UPDATE STATS</div>
+        <div class="card-title" style="justify-content:space-between;">
+          <span style="display:flex;align-items:center;gap:8px;"><span style="width:3px;height:14px;background:var(--cyan);box-shadow:0 0 6px var(--cyan);border-radius:1px;display:inline-block;"></span>UPDATE STATS</span>
+          <button id="injury-toggle-btn" onclick="toggleInjuryMode()" style="font-family:'Orbitron',monospace;font-size:0.6rem;letter-spacing:0.1em;padding:4px 10px;border-radius:2px;cursor:pointer;border:1px solid var(--orange);color:var(--orange);background:rgba(255,136,0,0.08);transition:all 0.2s;">🩹 INJURY MODE: OFF</button>
+        </div>
+        <div id="injury-notice" style="display:none;background:rgba(255,100,0,0.08);border:1px solid rgba(255,136,0,0.35);border-radius:3px;padding:8px 12px;margin-bottom:12px;font-size:0.8rem;color:var(--orange);font-family:'Share Tech Mono',monospace;">⚠ Pushups &amp; Running disabled — knee injury protocol active</div>
         <div class="update-section">
-          <div class="form-group">
+          <div class="form-group" id="field-pushup">
             <label>Max Pushups Today</label>
             <input type="number" id="upd-pushup" placeholder="reps" />
           </div>
@@ -1041,7 +1045,7 @@
             <label>Max Crunches Today</label>
             <input type="number" id="upd-crunch" placeholder="reps" />
           </div>
-          <div class="form-group">
+          <div class="form-group" id="field-run">
             <label>Running Distance (km)</label>
             <input type="number" id="upd-run" placeholder="km" step="0.1" />
           </div>
@@ -1253,6 +1257,7 @@ let G = {
   dungeonCompleted:[],
   sleepHours:0, waterLitres:0,
   intelTotal:0,
+  injuryMode:false,
 };
 
 const RANKS = [
@@ -1676,6 +1681,46 @@ function stopParticles() {
   if(particleAnim) { cancelAnimationFrame(particleAnim); particleAnim=null; }
 }
 
+// ===================== INJURY TOGGLE =====================
+function toggleInjuryMode() {
+  G.injuryMode = !G.injuryMode;
+  const btn = document.getElementById('injury-toggle-btn');
+  const notice = document.getElementById('injury-notice');
+  const fieldPushup = document.getElementById('field-pushup');
+  const fieldRun = document.getElementById('field-run');
+  const pushupInput = document.getElementById('upd-pushup');
+  const runInput = document.getElementById('upd-run');
+
+  if(G.injuryMode) {
+    btn.textContent = '🩹 INJURY MODE: ON';
+    btn.style.borderColor = 'var(--red)';
+    btn.style.color = 'var(--red)';
+    btn.style.background = 'rgba(255,50,80,0.1)';
+    notice.style.display = 'block';
+    fieldPushup.style.opacity = '0.35';
+    fieldPushup.style.pointerEvents = 'none';
+    fieldRun.style.opacity = '0.35';
+    fieldRun.style.pointerEvents = 'none';
+    pushupInput.value = '';
+    runInput.value = '';
+    addLog('⚠ Injury mode ACTIVATED — pushups & running disabled');
+  } else {
+    btn.textContent = '🩹 INJURY MODE: OFF';
+    btn.style.borderColor = 'var(--orange)';
+    btn.style.color = 'var(--orange)';
+    btn.style.background = 'rgba(255,136,0,0.08)';
+    notice.style.display = 'none';
+    fieldPushup.style.opacity = '1';
+    fieldPushup.style.pointerEvents = 'auto';
+    fieldRun.style.opacity = '1';
+    fieldRun.style.pointerEvents = 'auto';
+    addLog('✓ Injury mode DEACTIVATED — all exercises re-enabled');
+  }
+  // Regenerate quests to swap in/out injury alternatives
+  dailyQuests = [];
+  renderQuests();
+}
+
 // ===================== PHYSICAL UPDATE =====================
 function updatePhysical() {
   const pushup=+document.getElementById('upd-pushup').value||0;
@@ -1685,9 +1730,9 @@ function updatePhysical() {
   const curl=+document.getElementById('upd-curl').value||0;
 
   let xpGained=0;
-  if(pushup>G.pushup) { xpGained+=Math.round((pushup-G.pushup)*3); G.pushup=pushup; }
+  if(!G.injuryMode && pushup>G.pushup) { xpGained+=Math.round((pushup-G.pushup)*3); G.pushup=pushup; }
   if(crunch>G.crunch) { xpGained+=Math.round((crunch-G.crunch)*2); G.crunch=crunch; }
-  if(run>G.run) { xpGained+=Math.round((run-G.run)*15); G.run=run; }
+  if(!G.injuryMode && run>G.run) { xpGained+=Math.round((run-G.run)*15); G.run=run; }
   if(lateral>G.lateral) { xpGained+=Math.round((lateral-G.lateral)*2); G.lateral=lateral; }
   if(curl>G.curl) { xpGained+=Math.round((curl-G.curl)*2); G.curl=curl; }
   xpGained+=20; // base training XP
@@ -1755,13 +1800,19 @@ let dailyQuests=[];
 
 function generateQuests() {
   const lvl=G.level;
-  dailyQuests=[
-    {id:'dq1', title:'Iron Body Protocol', desc:`Complete ${Math.max(5,Math.round(G.pushup*0.8))} pushups`, icon:'💪', xp:50+lvl*2, done:false},
-    {id:'dq2', title:'Trail Blazer', desc:`Run ${Math.max(0.5,+(G.run*0.7).toFixed(1))} km`, icon:'🏃', xp:60+lvl*2, done:false},
+  const quests=[
     {id:'dq3', title:'Core Conditioning', desc:`Complete ${Math.max(10,Math.round(G.crunch*0.8))} crunches`, icon:'🔥', xp:40+lvl, done:false},
-    {id:'dq4', title:'Mental Fortress', desc:`Study/work for ${Math.max(1,Math.round(G.intelTotal*0.05)+1)} hours`, icon:'📚', xp:45+lvl, done:false},
+    {id:'dq4', title:'Mental Fortress', desc:'Study / work for 12 hours', icon:'📚', xp:45+lvl, done:false},
     {id:'dq5', title:'Hydration Protocol', desc:'Drink 2.5L of water today', icon:'💧', xp:20, done:false},
   ];
+  if(!G.injuryMode) {
+    quests.unshift({id:'dq2', title:'Trail Blazer', desc:`Run ${Math.max(0.5,+(G.run*0.7).toFixed(1))} km`, icon:'🏃', xp:60+lvl*2, done:false});
+    quests.unshift({id:'dq1', title:'Iron Body Protocol', desc:`Complete ${Math.max(5,Math.round(G.pushup*0.8))} pushups`, icon:'💪', xp:50+lvl*2, done:false});
+  } else {
+    quests.unshift({id:'dq_lateral', title:'Upper Body Rehab', desc:`Complete ${Math.max(8,G.lateral)} lateral raises`, icon:'🏋️', xp:40+lvl, done:false});
+    quests.unshift({id:'dq_curl', title:'Arm Conditioning', desc:`Complete ${Math.max(8,G.curl)} bicep curls`, icon:'💪', xp:35+lvl, done:false});
+  }
+  dailyQuests=quests;
 }
 
 function renderQuests() {
@@ -1932,165 +1983,193 @@ function drawBody() {
   const W=200, H=360;
   ctx.clearRect(0,0,W,H);
 
-  // Normalize measurements to shape factors
-  const chestN = (G.chest-60)/100; // 0-1
-  const waistN = (G.waist-50)/110;
-  const hipN = (G.hip-60)/100;
-  const thighN = (G.thigh-30)/70;
-  const armN = (G.arm-20)/40;
-  const neckN = (G.neck-25)/35;
+  // Normalize 0-1
+  const chestN  = Math.min(1,Math.max(0,(G.chest -60)/100));
+  const waistN  = Math.min(1,Math.max(0,(G.waist -50)/110));
+  const hipN    = Math.min(1,Math.max(0,(G.hip   -60)/100));
+  const thighN  = Math.min(1,Math.max(0,(G.thigh -30)/70));
+  const armN    = Math.min(1,Math.max(0,(G.arm   -20)/40));
+  const neckN   = Math.min(1,Math.max(0,(G.neck  -25)/35));
 
-  const cx=100;
+  // Derived widths (px)
+  const chestW  = 38 + chestN*32;
+  const waistW  = 24 + waistN*28;
+  const hipW    = 34 + hipN*30;
+  const thighW  = 14 + thighN*16;
+  const calfW   = thighW * 0.72;
+  const armW    = 7  + armN*10;
+  const neckW   = 9  + neckN*8;
 
-  // Glow color
-  const glow='rgba(0,170,255,0.6)';
+  const cx = W/2;
 
-  function bodyPart(x,y,w,h,r=4) {
-    ctx.beginPath();
-    ctx.roundRect(x-w/2,y-h/2,w,h,r);
-    ctx.fill();
-    ctx.stroke();
+  // ---- gradient fill helper ----
+  function bodyGrad(x,y,w,h) {
+    const g=ctx.createLinearGradient(x-w/2,0,x+w/2,0);
+    g.addColorStop(0,'rgba(0,80,160,0.55)');
+    g.addColorStop(0.35,'rgba(10,120,220,0.80)');
+    g.addColorStop(0.65,'rgba(10,120,220,0.80)');
+    g.addColorStop(1,'rgba(0,80,160,0.55)');
+    return g;
   }
 
-  ctx.shadowColor='rgba(0,170,255,0.5)';
-  ctx.shadowBlur=12;
-  ctx.fillStyle='rgba(10,40,80,0.9)';
-  ctx.strokeStyle='rgba(0,180,255,0.7)';
-  ctx.lineWidth=1.2;
+  ctx.shadowColor='rgba(0,160,255,0.55)';
+  ctx.shadowBlur=10;
+  ctx.strokeStyle='rgba(0,200,255,0.75)';
+  ctx.lineWidth=1.1;
 
-  // Head
-  const headR=18+neckN*4;
+  // ── HEAD ──
+  const headH=26, headW=18+neckN*4;
   ctx.beginPath();
-  ctx.ellipse(cx, 28, headR*0.8, headR, 0, 0, Math.PI*2);
-  ctx.fill(); ctx.stroke();
-
-  // Neck
-  const neckW=14+neckN*10;
-  bodyPart(cx, 52, neckW, 14, 2);
-
-  // Torso (chest area)
-  const chestW=40+chestN*50;
-  const chestH=55;
-  ctx.beginPath();
-  ctx.beginPath();
-  const tx=cx-chestW/2, ty=62;
-  ctx.moveTo(tx+4, ty);
-  ctx.lineTo(tx+chestW-4, ty);
-  const waistW=30+waistN*45;
-  ctx.lineTo(cx+waistW/2, ty+chestH);
-  ctx.lineTo(cx-waistW/2, ty+chestH);
-  ctx.closePath();
+  ctx.ellipse(cx, 26, headW*0.82, headH*0.88, 0, 0, Math.PI*2);
+  ctx.fillStyle=bodyGrad(cx,0,headW*2,0);
   ctx.fill(); ctx.stroke();
 
-  // Waist / lower torso
-  const lowerH=30;
-  ctx.beginPath();
-  ctx.moveTo(cx-waistW/2, 118);
-  ctx.lineTo(cx+waistW/2, 118);
-  const hipW=35+hipN*48;
-  ctx.lineTo(cx+hipW/2, 148);
-  ctx.lineTo(cx-hipW/2, 148);
-  ctx.closePath();
-  ctx.fill(); ctx.stroke();
-
-  // Arms
-  const armW=10+armN*14;
-  const armLen=75;
-  // Left arm
-  ctx.beginPath();
-  ctx.moveTo(cx-chestW/2+4, 65);
-  ctx.lineTo(cx-chestW/2-6, 65);
-  ctx.lineTo(cx-chestW/2-8+armN*(-4), 65+armLen);
-  ctx.lineTo(cx-chestW/2+armW-2, 65+armLen);
-  ctx.closePath();
-  ctx.fill(); ctx.stroke();
-  // Right arm
-  ctx.beginPath();
-  ctx.moveTo(cx+chestW/2-4, 65);
-  ctx.lineTo(cx+chestW/2+6, 65);
-  ctx.lineTo(cx+chestW/2+8-armN*(-4), 65+armLen);
-  ctx.lineTo(cx+chestW/2-armW+2, 65+armLen);
-  ctx.closePath();
-  ctx.fill(); ctx.stroke();
-
-  // Left forearm
-  ctx.beginPath();
-  ctx.moveTo(cx-chestW/2-8+armN*(-4), 140);
-  ctx.lineTo(cx-chestW/2+armW-2, 140);
-  ctx.lineTo(cx-chestW/2+armW-4, 185);
-  ctx.lineTo(cx-chestW/2-6+armN*(-4), 185);
-  ctx.closePath();
-  ctx.fill(); ctx.stroke();
-  // Right forearm
-  ctx.beginPath();
-  ctx.moveTo(cx+chestW/2+8-armN*(-4), 140);
-  ctx.lineTo(cx+chestW/2-armW+2, 140);
-  ctx.lineTo(cx+chestW/2-armW+4, 185);
-  ctx.lineTo(cx+chestW/2+6-armN*(-4), 185);
-  ctx.closePath();
-  ctx.fill(); ctx.stroke();
-
-  // Thighs
-  const thighW=18+thighN*22;
-  const thighGap=3;
-  // Left thigh
-  ctx.beginPath();
-  ctx.moveTo(cx-thighGap, 148);
-  ctx.lineTo(cx-thighW-thighGap, 148);
-  ctx.lineTo(cx-thighW+2-thighGap, 230);
-  ctx.lineTo(cx-4-thighGap, 230);
-  ctx.closePath();
-  ctx.fill(); ctx.stroke();
-  // Right thigh
-  ctx.beginPath();
-  ctx.moveTo(cx+thighGap, 148);
-  ctx.lineTo(cx+thighW+thighGap, 148);
-  ctx.lineTo(cx+thighW-2+thighGap, 230);
-  ctx.lineTo(cx+4+thighGap, 230);
-  ctx.closePath();
-  ctx.fill(); ctx.stroke();
-
-  // Lower legs
-  const calfW=thighW*0.7;
-  // Left
-  ctx.beginPath();
-  ctx.moveTo(cx-4-thighGap, 232);
-  ctx.lineTo(cx-thighW+2-thighGap, 232);
-  ctx.lineTo(cx-calfW+4-thighGap, 305);
-  ctx.lineTo(cx-2-thighGap, 305);
-  ctx.closePath();
-  ctx.fill(); ctx.stroke();
-  // Right
-  ctx.beginPath();
-  ctx.moveTo(cx+4+thighGap, 232);
-  ctx.lineTo(cx+thighW-2+thighGap, 232);
-  ctx.lineTo(cx+calfW-4+thighGap, 305);
-  ctx.lineTo(cx+2+thighGap, 305);
-  ctx.closePath();
-  ctx.fill(); ctx.stroke();
-
-  // Feet
-  bodyPart(cx-thighGap-calfW/2+4, 315, calfW+4, 16, 3);
-  bodyPart(cx+thighGap+calfW/2-4, 315, calfW+4, 16, 3);
-
-  // Body scan lines overlay
-  ctx.shadowBlur=0;
-  for(let y=10;y<350;y+=12) {
+  // Ear nubs
+  [-1,1].forEach(side=>{
     ctx.beginPath();
-    ctx.moveTo(0,y); ctx.lineTo(W,y);
-    ctx.strokeStyle='rgba(0,180,255,0.03)';
-    ctx.lineWidth=1;
-    ctx.stroke();
-  }
-
-  // Corner brackets
-  ctx.strokeStyle='rgba(0,200,255,0.4)';
-  ctx.lineWidth=1.5;
-  const b=8;
-  [[4,4],[196,4],[4,356],[196,356]].forEach(([x,y])=>{
-    const dx=x<100?1:-1, dy=y<100?1:-1;
-    ctx.beginPath(); ctx.moveTo(x,y+dy*b); ctx.lineTo(x,y); ctx.lineTo(x+dx*b,y); ctx.stroke();
+    ctx.ellipse(cx+side*(headW*0.82-1), 26, 3, 5, 0, 0, Math.PI*2);
+    ctx.fillStyle='rgba(0,100,180,0.7)'; ctx.fill(); ctx.stroke();
   });
+
+  // ── NECK ──
+  ctx.beginPath();
+  ctx.moveTo(cx-neckW/2, 48);
+  ctx.lineTo(cx+neckW/2, 48);
+  ctx.lineTo(cx+neckW/2+1, 60);
+  ctx.lineTo(cx-neckW/2-1, 60);
+  ctx.closePath();
+  ctx.fillStyle=bodyGrad(cx,48,neckW,0); ctx.fill(); ctx.stroke();
+
+  // ── TORSO (chest + waist as smooth bezier shape) ──
+  ctx.beginPath();
+  ctx.moveTo(cx-chestW/2, 62);                                 // top-left shoulder
+  ctx.bezierCurveTo(cx-chestW/2-4, 80,  cx-waistW/2-2, 105,  cx-waistW/2, 120); // left side
+  ctx.lineTo(cx+waistW/2, 120);
+  ctx.bezierCurveTo(cx+waistW/2+2, 105, cx+chestW/2+4, 80,   cx+chestW/2, 62);  // right side
+  ctx.closePath();
+  ctx.fillStyle=bodyGrad(cx,62,chestW,0); ctx.fill(); ctx.stroke();
+
+  // Chest definition line
+  ctx.beginPath();
+  ctx.moveTo(cx-chestW/2+4,75); ctx.lineTo(cx,78); ctx.lineTo(cx+chestW/2-4,75);
+  ctx.strokeStyle='rgba(0,220,255,0.18)'; ctx.lineWidth=1; ctx.stroke();
+  ctx.strokeStyle='rgba(0,200,255,0.75)'; ctx.lineWidth=1.1;
+
+  // Abs hint lines
+  for(let i=0;i<2;i++) {
+    const ay=90+i*12;
+    const aw=waistW*0.6-i*4;
+    ctx.beginPath();
+    ctx.moveTo(cx-aw/2,ay); ctx.lineTo(cx+aw/2,ay);
+    ctx.strokeStyle=`rgba(0,220,255,${0.1-i*0.02})`; ctx.stroke();
+  }
+  ctx.strokeStyle='rgba(0,200,255,0.75)'; ctx.lineWidth=1.1;
+
+  // ── PELVIS / HIP BLOCK ──
+  ctx.beginPath();
+  ctx.moveTo(cx-waistW/2, 120);
+  ctx.bezierCurveTo(cx-waistW/2-2, 128, cx-hipW/2-2, 134, cx-hipW/2, 142);
+  ctx.lineTo(cx+hipW/2, 142);
+  ctx.bezierCurveTo(cx+hipW/2+2, 134, cx+waistW/2+2, 128, cx+waistW/2, 120);
+  ctx.closePath();
+  ctx.fillStyle=bodyGrad(cx,120,hipW,0); ctx.fill(); ctx.stroke();
+
+  // ── ARMS ──
+  const shoulderY=66;
+  const armTopX=chestW/2+2;
+  [-1,1].forEach(side=>{
+    // Upper arm (shoulder-elbow, slight outward angle)
+    const ax1=cx+side*(armTopX);
+    const ax2=cx+side*(armTopX+4+armN*3);
+    const ay1=shoulderY, ay2=shoulderY+55;
+    ctx.beginPath();
+    ctx.moveTo(ax1-side*armW*0.5, ay1+2);
+    ctx.bezierCurveTo(ax1-side*armW*0.7, ay1+20, ax2-side*armW, ay2-10, ax2-side*armW*0.9, ay2);
+    ctx.lineTo(ax2+side*armW*0.9, ay2);
+    ctx.bezierCurveTo(ax2+side*armW, ay2-10, ax1+side*armW*0.7, ay1+20, ax1+side*armW*0.5, ay1+2);
+    ctx.closePath();
+    ctx.fillStyle=bodyGrad(cx+side*(armTopX+armW),0,armW*2,0); ctx.fill(); ctx.stroke();
+
+    // Elbow circle
+    ctx.beginPath();
+    ctx.arc(ax2, ay2, armW*0.72, 0, Math.PI*2);
+    ctx.fillStyle='rgba(0,100,180,0.6)'; ctx.fill(); ctx.stroke();
+
+    // Forearm (angling back inward)
+    const ax3=cx+side*(armTopX+2+armN*2);
+    const ay3=ay2+52;
+    ctx.beginPath();
+    ctx.moveTo(ax2-side*armW*0.85, ay2+2);
+    ctx.bezierCurveTo(ax2-side*armW*0.9, ay2+20, ax3-side*armW*0.7, ay3-10, ax3-side*armW*0.6, ay3);
+    ctx.lineTo(ax3+side*armW*0.6, ay3);
+    ctx.bezierCurveTo(ax3+side*armW*0.7, ay3-10, ax2+side*armW*0.9, ay2+20, ax2+side*armW*0.85, ay2+2);
+    ctx.closePath();
+    ctx.fillStyle=bodyGrad(cx+side*(armTopX+armW),0,armW*1.8,0); ctx.fill(); ctx.stroke();
+
+    // Hand (small rounded rect)
+    ctx.beginPath();
+    ctx.ellipse(ax3, ay3+7, armW*0.75, 6, 0, 0, Math.PI*2);
+    ctx.fillStyle='rgba(0,100,180,0.7)'; ctx.fill(); ctx.stroke();
+  });
+
+  // ── LEGS ──
+  const legTopY=143;
+  const gap=3; // inner gap between legs
+  [-1,1].forEach(side=>{
+    const lx=cx+side*(gap+thighW/2);
+
+    // Thigh
+    ctx.beginPath();
+    ctx.moveTo(lx-thighW/2, legTopY);
+    ctx.bezierCurveTo(lx-thighW/2-1, legTopY+25, lx-thighW/2+1, legTopY+50, lx-calfW/2+1, legTopY+78);
+    ctx.lineTo(lx+calfW/2-1, legTopY+78);
+    ctx.bezierCurveTo(lx+thighW/2-1, legTopY+50, lx+thighW/2+1, legTopY+25, lx+thighW/2, legTopY);
+    ctx.closePath();
+    ctx.fillStyle=bodyGrad(lx,legTopY,thighW,0); ctx.fill(); ctx.stroke();
+
+    // Knee
+    ctx.beginPath();
+    ctx.ellipse(lx, legTopY+80, calfW/2+1, 5, 0, 0, Math.PI*2);
+    ctx.fillStyle='rgba(0,100,180,0.55)'; ctx.fill(); ctx.stroke();
+
+    // Calf
+    const cy2=legTopY+84, cy3=legTopY+152;
+    ctx.beginPath();
+    ctx.moveTo(lx-calfW/2, cy2);
+    ctx.bezierCurveTo(lx-calfW/2-1, cy2+30, lx-calfW/2+1, cy2+60, lx-calfW/2+2, cy3);
+    ctx.lineTo(lx+calfW/2-2, cy3);
+    ctx.bezierCurveTo(lx+calfW/2-1, cy2+60, lx+calfW/2+1, cy2+30, lx+calfW/2, cy2);
+    ctx.closePath();
+    ctx.fillStyle=bodyGrad(lx,cy2,calfW,0); ctx.fill(); ctx.stroke();
+
+    // Foot
+    const footW=calfW+6, footH=9;
+    const fx=lx+side*2;
+    ctx.beginPath();
+    ctx.ellipse(fx, cy3+footH/2+1, footW/2, footH/2, 0, 0, Math.PI*2);
+    ctx.fillStyle='rgba(0,90,170,0.75)'; ctx.fill(); ctx.stroke();
+  });
+
+  // ── SCAN LINES ──
+  ctx.shadowBlur=0;
+  for(let y=5;y<H-5;y+=10) {
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y);
+    ctx.strokeStyle='rgba(0,180,255,0.025)'; ctx.lineWidth=1; ctx.stroke();
+  }
+
+  // ── CORNER BRACKETS ──
+  ctx.strokeStyle='rgba(0,220,255,0.5)'; ctx.lineWidth=1.5;
+  const br=10;
+  [[4,4],[W-4,4],[4,H-4],[W-4,H-4]].forEach(([x,y])=>{
+    const dx=x<W/2?1:-1, dy=y<H/2?1:-1;
+    ctx.beginPath(); ctx.moveTo(x,y+dy*br); ctx.lineTo(x,y); ctx.lineTo(x+dx*br,y); ctx.stroke();
+  });
+
+  // ── SCAN LABEL ──
+  ctx.font='7px Orbitron,monospace';
+  ctx.fillStyle='rgba(0,200,255,0.35)';
+  ctx.textAlign='left'; ctx.fillText('BODY SCAN', 8, H-8);
+  ctx.textAlign='right'; ctx.fillText('ACTIVE', W-8, H-8);
 }
 
 function updateBodyProgress() {
